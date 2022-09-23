@@ -5,17 +5,18 @@ from pydantic import BaseModel
 import boto3
 
 from dynamodb_monotable.table.indexes import Indexs
-from dynamodb_monotable.table.attributes.attributes import ModelAttribute
-from dynamodb_monotable.table.models import BaseItem
+from dynamodb_monotable.table.attributes.attributes import Attribute
+from dynamodb_monotable.table.models import Item
 
 ModelName = TypeVar("ModelName", bound=str)
 AttrName = TypeVar("AttrName", bound=str)
 REPLACEMENT_PATTERN = re.compile(r"{[A-Za-z\d_]+}")
+TypedModel = TypeVar("TypedModel")
 
 
 class TableSchema(BaseModel):
     indexes: Indexs
-    models: Dict[AttrName, Type[BaseItem]]
+    models: List[Type[Item]]
 
     def get_key_schema(self) -> List[Dict]:
         key_schema = []
@@ -57,12 +58,21 @@ class TableSchema(BaseModel):
 
 
 class Table:
-    def __init__(self, name: str, schema: TableSchema):
+    def __init__(self, name: str, schema: TableSchema, client_config: Dict = None):
         self.name = name
         self.schema = schema
+        self.client_config = client_config if client_config else {}
 
-    def create_table(self, *, endpoint_url: Optional[str] = None) -> None:
-        client = boto3.client("dynamodb", endpoint_url=endpoint_url)
+        self.table_config = {
+            "table_name": self.name,
+            "key_schema": {
+                "hash_key": self.schema.indexes.primary.hash_key,
+                "sort_key": self.schema.indexes.primary.sort_key,
+            },
+        }
+
+    def create_table(self) -> None:
+        client = boto3.client("dynamodb", **self.client_config)
         client.create_table(
             TableName=self.name,
             KeySchema=self.schema.get_key_schema(),
@@ -70,9 +80,15 @@ class Table:
             BillingMode="PAY_PER_REQUEST",
         )
 
-    def get_model(self, model_name: ModelName) -> Dict[AttrName, ModelAttribute]:
+    def delete_table(self) -> None:
+        client = boto3.client("dynamodb", **self.client_config)
+        client.delete_table(TableName=self.name)
+
+    def get_model(self, model_class: TypedModel) -> TypedModel:
 
         try:
-            return self.schema.models[model_name]
-        except KeyError:
-            return ValueError(f"Model {model_name} does not exist")
+            model = [m for m in self.schema.models if m == model_class]
+            model = model[0]
+            return model(self.table_config, self.client_config)
+        except IndexError:
+            raise ValueError(f"Model of type {model_class} does not exist")
