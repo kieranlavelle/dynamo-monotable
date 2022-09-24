@@ -43,7 +43,7 @@ class Attribute(ABC):
         placeholder = f":{self.name}"
         key_condition_expression_part = f"begins_with({self.name}, {placeholder})"
         expression_attribute_values_part = {
-            f"{placeholder}": {self.dynamodb_type: value}
+            f"{placeholder}": {self.dynamodb_type: self.serialize(value)}
         }
 
         return Condition(
@@ -54,21 +54,21 @@ class Attribute(ABC):
     def eq(self, value: Any) -> Condition:
         placeholder = f":{uuid4().hex}"
         expression = f"{self.name} = {placeholder}"
-        values = {f"{placeholder}": {self.dynamodb_type: value}}
+        values = {f"{placeholder}": {self.dynamodb_type: self.serialize(value)}}
 
         return Condition(expression=expression, values=values)
 
     def gt(self, value: Any) -> Condition:
         placeholder = f":{uuid4().hex}"
         expression = f"{self.name} > {placeholder}"
-        values = {f"{placeholder}": {self.dynamodb_type: value}}
+        values = {f"{placeholder}": {self.dynamodb_type: self.serialize(value)}}
 
         return Condition(expression=expression, values=values)
 
     def lt(self, value: Any) -> Condition:
         placeholder = f":{uuid4().hex}"
         expression = f"{self.name} < {placeholder}"
-        values = {f"{placeholder}": {self.dynamodb_type: value}}
+        values = {f"{placeholder}": {self.dynamodb_type: self.serialize(value)}}
 
         return Condition(expression=expression, values=values)
 

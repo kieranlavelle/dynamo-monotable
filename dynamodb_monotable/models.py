@@ -1,13 +1,48 @@
-from typing import Dict, ClassVar, List, Any, Optional, TypeVar
+from typing import Dict, ClassVar, List, Any, Optional, TypeVar, Iterator
 from dataclasses import dataclass, fields, field
 
 import boto3
 
 from dynamodb_monotable.resolvers import solve_template_values
-from dynamodb_monotable.attributes import Attribute
+from dynamodb_monotable.attributes import Attribute, Condition
 from dynamodb_monotable import query_engine
 
 TItem = TypeVar("TItem", bound="Item")
+
+
+class ResultsSet:
+    def __init__(
+        self,
+        model: TItem,
+        results: List[Dict[str, Any]],
+        last_evalulated_key: Dict[str, Any],
+    ):
+        self.last_evaluated_key = last_evalulated_key
+        self._model = model
+        self._results = results
+        self._last_iterated_index = 0
+
+    def __next__(self) -> TItem:
+        try:
+            item = self._results[self._last_iterated_index]
+            deserialized_item = {}
+            for field_name, field in self._model._fields().items():
+                field_value = item[field_name][field.dynamodb_type]
+                deserialized_field_value = field.deserialize(field_value)
+                deserialized_item[field_name] = deserialized_field_value
+
+            self._last_iterated_index += 1
+            return self._model.__class__(
+                table_config=self._model.table_config,
+                client_config=self._model.client_config,
+                create_state=True,
+                attribute_values=deserialized_item,
+            )
+        except IndexError:
+            raise StopIteration
+
+    def __iter__(self) -> Iterator[TItem]:
+        return self
 
 
 @dataclass
@@ -117,43 +152,33 @@ class Item:
 
         return self
 
-    def query(self, hash_key: Any, key_condition: Optional[List[Dict]]) -> List[TItem]:
-
-        # expressions = []
-        # values = {}
-
-        # # get the hash key name
-        # hk_placeholder = f":hk"
-        # hash_key_name = self.table_config["key_schema"]["hash_key"].name
-        # hash_key_type = self.table_config["key_schema"]["hash_key"].type_
-        # hk_expression = f"{hash_key_name} = {hk_placeholder}"
-        # exp = {hk_placeholder: {hash_key_type: hash_key}}
-
-        # expressions.append(hk_expression)
-        # values.update(exp)
-
-        # # if key_condition is specified check the table has a sort key.
-        # if key_condition and not self.table_config["key_schema"]["sort_key"]:
-        #     raise ValueError(
-        #         "Sort key is not defined on the table but a key-condition has been provided."
-        #     )
-        # expressions.append(key_condition["exp"])
-        # values.update(key_condition["values"])
-
-        # # craft the query
-        # key_condition = " AND ".join(expressions)
+    def query(
+        self,
+        hash_key: Any,
+        key_condition: Optional[Condition] = None,
+        filter_expression: Optional[Condition] = None,
+    ) -> Iterator[TItem]:
 
         expression, values = query_engine.create_key_condition(
             self.table_config, hash_key, key_condition
         )
+
+        if filter_expression:
+            values.update(filter_expression.values)
 
         client = boto3.client("dynamodb", **self.client_config)
         response = client.query(
             TableName=self.table_config["table_name"],
             Select="ALL_ATTRIBUTES",
             KeyConditionExpression=expression,
+            FilterExpression=filter_expression.expression
+            if filter_expression
+            else None,
             ExpressionAttributeValues=values,
         )
 
-        # TODO: Need to parse the response here...
-        x = 1
+        return ResultsSet(
+            model=self,
+            results=response["Items"],
+            last_evalulated_key=response.get("LastEvaluatedKey", {}),
+        )

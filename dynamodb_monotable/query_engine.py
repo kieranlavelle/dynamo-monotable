@@ -1,4 +1,6 @@
-from typing import Dict, Optional, Any, Tuple, List
+from typing import Dict, Optional, Any, Tuple
+
+from dynamodb_monotable.attributes import Attribute, Condition
 
 
 def _create_hash_key_expression(table_config: Dict, hash_key: str) -> Tuple[str, Dict]:
@@ -13,7 +15,7 @@ def _create_hash_key_expression(table_config: Dict, hash_key: str) -> Tuple[str,
 
 
 def _create_key_condition_expression(
-    table_config: Dict, key_condition: Optional[Any] = None
+    table_config: Dict, key_condition: Optional[Condition] = None
 ) -> Tuple[str, Dict]:
     """Create a key condition expression for a query"""
 
@@ -21,21 +23,31 @@ def _create_key_condition_expression(
     if not key_condition:
         return "", {}
 
-    x = 1
+    return key_condition.expression, key_condition.values
 
 
 def create_key_condition(
-    table_config: Dict, hash_key: str, key_condition: Optional[Any] = None
-):
+    table_config: Dict, hash_key: str, key_condition: Optional[Condition] = None
+) -> Tuple[str, Dict]:
     """Create a key condition for a query"""
 
-    expression = []
+    expression = ""
     expression_values = {}
 
     hk_expression, hk_values = _create_hash_key_expression(table_config, hash_key)
     kc_expression, kc_values = _create_key_condition_expression(
         table_config, key_condition
     )
+
+    # key-condition's are always ANDed with the hash key
+    if kc_expression:
+        expression = f"{hk_expression} AND {kc_expression}"
+        expression_values = {**hk_values, **kc_values}
+    else:
+        expression = hk_expression
+        expression_values = hk_values
+
+    return expression, expression_values
 
 
 def _validate_key_condition(table_config: Dict, key_condition: Optional[Any] = None):
