@@ -1,10 +1,10 @@
 import re
 from typing import Dict, TypeVar, List, Type
 
-from pydantic import BaseModel
+from pydantic import BaseModel, root_validator
 import boto3
 
-from dynamodb_monotable.indexes import Indexs
+from dynamodb_monotable.indexes import Index
 from dynamodb_monotable.models import Item
 
 ModelName = TypeVar("ModelName", bound=str)
@@ -14,20 +14,26 @@ TypedModel = TypeVar("TypedModel")
 
 
 class TableSchema(BaseModel):
-    indexes: Indexs
+    indexes: Dict[str, Index]
     models: List[Type[Item]]
+
+    @root_validator()
+    def check_primary_index_provided(cls, values: Dict):
+        if "primary" not in values["indexes"]:
+            raise ValueError("Primary index must be provided")
+        return values
 
     def get_key_schema(self) -> List[Dict]:
         key_schema = []
 
         key_schema.append(
-            {"AttributeName": self.indexes.primary.hash_key.name, "KeyType": "HASH"},
+            {"AttributeName": self.indexes["primary"].hash_key.name, "KeyType": "HASH"},
         )
 
-        if self.indexes.primary.sort_key:
+        if self.indexes["primary"].sort_key:
             key_schema.append(
                 {
-                    "AttributeName": self.indexes.primary.sort_key.name,
+                    "AttributeName": self.indexes["primary"].sort_key.name,
                     "KeyType": "RANGE",
                 },
             )
@@ -39,17 +45,17 @@ class TableSchema(BaseModel):
 
         attribute_definitions.append(
             {
-                "AttributeName": self.indexes.primary.hash_key.name,
-                "AttributeType": self.indexes.primary.hash_key.type_,
+                "AttributeName": self.indexes["primary"].hash_key.name,
+                "AttributeType": self.indexes["primary"].hash_key.type_,
             }
         )
 
         # add the range key definition if there is one
-        if self.indexes.primary.sort_key:
+        if self.indexes["primary"].sort_key:
             attribute_definitions.append(
                 {
-                    "AttributeName": self.indexes.primary.sort_key.name,
-                    "AttributeType": self.indexes.primary.sort_key.type_,
+                    "AttributeName": self.indexes["primary"].sort_key.name,
+                    "AttributeType": self.indexes["primary"].sort_key.type_,
                 }
             )
 
@@ -68,7 +74,7 @@ class Table:
                 "hash_key": self.schema.indexes.primary.hash_key,
                 "sort_key": self.schema.indexes.primary.sort_key,
             },
-            "indexes": self.schema.indexes.additional,
+            "indexes": self.schema.indexes,
         }
 
     def create_table(self) -> None:

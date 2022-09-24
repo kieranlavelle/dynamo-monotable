@@ -119,39 +119,44 @@ class Item:
         self.create_state = True
         return self
 
-    def get(self, index_name: Optional[str]) -> TItem:
+    def get(self, index_name: str = "primary") -> TItem:
         if not self.create_state:
             raise ValueError("Item must be created before you can call `get`.")
 
-        # use the default index if none is provided.
-        if index_name is None:
-            hash_key = getattr(self, self.table_config["key_schema"]["hash_key"].name)
-            sort_key = None
-            if self.table_config["key_schema"]["sort_key"]:
-                sort_key = getattr(
-                    self, self.table_config["key_schema"]["sort_key"].name
-                )
-
-            return self.get_by_key(hash_key.value, sort_key.value)
-
-        # use the index provided.
         index = self.table_config["indexes"][index_name]
-        x = 1
 
-    def get_by_key(self, hash_key: Any, sort_key: Optional[Any] = None) -> TItem:
+        hash_key = getattr(self, index["hash_key"].name)
+        sort_key = None
+        if index["sort_key"]:
+            sort_key = getattr(self, index["sort_key"].name)
+
+        return self.get_by_key(hash_key.value, sort_key.value)
+
+    def get_by_key(
+        self,
+        hash_key: Any,
+        sort_key: Optional[Any] = None,
+        index_name: Optional[str] = None,
+    ) -> TItem:
+
+        # TODO: Need's updating to work with index...
+        # update the key schema so primary is named primary...
+        index = self.table_config["indexes"][index_name]
+
         dynamodb = boto3.resource("dynamodb", **self.client_config)
         table = dynamodb.Table(self.table_config["table_name"])
 
-        key = {self.table_config["key_schema"]["hash_key"].name: hash_key}
+        key = {index["hash_key"].name: hash_key}
         if sort_key:
-            if self.table_config["key_schema"]["sort_key"]:
-                key[self.table_config["key_schema"]["sort_key"].name] = sort_key
+            if index["sort_key"]:
+                key[index["sort_key"].name] = sort_key
             else:
                 raise ValueError(
                     "Sort key is not defined on the table but has been provided."
                 )
 
         # TODO: this is basic at the moment and can support far more args.
+        # TODO: Also need to support a number of exceptions
         response = table.get_item(Key=key)
         if "Item" not in response:
             raise ValueError("Item not found.")
@@ -172,8 +177,13 @@ class Item:
         key_condition: Optional[Condition] = None,
         filter_expression: Optional[Condition] = None,
         limit: Optional[int] = None,
-    ) -> Iterator[TItem]:
+    ) -> ResultsSet:
 
+        # TODO: Update query to support index
+
+        # TODO: create a way to get the HK and do it like this..
+        # HK will depend on the index we're using....
+        # condition = self.hk & key_condition
         expression, values = query_engine.create_key_condition(
             self.table_config, hash_key, key_condition
         )
@@ -201,6 +211,7 @@ class Item:
         client = boto3.client("dynamodb", **self.client_config)
         response = client.query(**query_arguments)
 
+        # TODO: Update this so the result set is created with ResultsSet(self, response)
         return ResultsSet(
             model=self,
             results=response["Items"],

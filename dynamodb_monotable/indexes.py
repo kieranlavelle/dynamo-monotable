@@ -7,6 +7,7 @@ from pydantic import BaseModel, root_validator, Field
 class IndexType(str, Enum):
     GSI = "GSI"
     LSI = "LSI"
+    PRIMARY = "PRIMARY"
 
 
 class Key(BaseModel):
@@ -14,12 +15,7 @@ class Key(BaseModel):
     type_: str = Field(..., alias="type")
 
 
-class PrimaryIndex(BaseModel):
-    hash_key: Key
-    sort_key: Optional[Key]
-
-
-class AdditionalIndex(BaseModel):
+class Index(BaseModel):
     hash_key: Optional[Key]
     sort_key: Optional[Key]
     index_type: IndexType = IndexType.GSI
@@ -29,8 +25,3 @@ class AdditionalIndex(BaseModel):
         if values["index_type"] == IndexType.LSI and values["hash_key"]:
             raise ValueError("LSI must not have a hash key")
         return values
-
-
-class Indexs(BaseModel):
-    primary: PrimaryIndex
-    additional: Optional[Dict[str, AdditionalIndex]]
