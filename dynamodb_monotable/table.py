@@ -1,12 +1,11 @@
 import re
-from typing import Dict, TypeVar, List, Optional, Type
+from typing import Dict, TypeVar, List, Type
 
 from pydantic import BaseModel
 import boto3
 
-from dynamodb_monotable.table.indexes import Indexs
-from dynamodb_monotable.table.attributes.attributes import Attribute
-from dynamodb_monotable.table.models import Item
+from dynamodb_monotable.indexes import Indexs
+from dynamodb_monotable.models import Item
 
 ModelName = TypeVar("ModelName", bound=str)
 AttrName = TypeVar("AttrName", bound=str)
