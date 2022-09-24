@@ -1,5 +1,5 @@
 from enum import Enum
-from typing import Optional, List
+from typing import Optional, Dict
 
 from pydantic import BaseModel, root_validator, Field
 
@@ -20,8 +20,8 @@ class PrimaryIndex(BaseModel):
 
 
 class AdditionalIndex(BaseModel):
-    hash_key: Optional[str]
-    sort_key: str
+    hash_key: Optional[Key]
+    sort_key: Optional[Key]
     index_type: IndexType = IndexType.GSI
 
     @root_validator()
@@ -33,4 +33,4 @@ class AdditionalIndex(BaseModel):
 
 class Indexs(BaseModel):
     primary: PrimaryIndex
-    additional: Optional[List[AdditionalIndex]]
+    additional: Optional[Dict[str, AdditionalIndex]]

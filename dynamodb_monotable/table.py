@@ -68,6 +68,7 @@ class Table:
                 "hash_key": self.schema.indexes.primary.hash_key,
                 "sort_key": self.schema.indexes.primary.sort_key,
             },
+            "indexes": self.schema.indexes.additional,
         }
 
     def create_table(self) -> None:

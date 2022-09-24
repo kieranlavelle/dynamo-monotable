@@ -24,15 +24,13 @@ def test_can_get_item_by_key(create_basic_table: Tuple[Table, Workorder]):
     populated_model_2.save()
 
     populated_model_3 = model.create(
-        org_id=456, workorder_id=456, date_created=datetime(2019, 1, 1)
+        org_id=456, workorder_id=458, date_created=datetime(2019, 1, 1)
     )
     populated_model_3.save()
 
     # retrieve the data from the database using boto3
     results = model.query(
-        hash_key="#WORKORDER",
-        key_condition=model.sk.begins_with("#ORG:456"),
-        filter_expression=model.date_created.lt(datetime(2020, 1, 1)),
+        hash_key="#WORKORDER", key_condition=model.sk.begins_with("#ORG:456")
     )
     for result in results:
         x = 1

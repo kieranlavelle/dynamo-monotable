@@ -10,14 +10,20 @@ from dynamodb_monotable import query_engine
 TItem = TypeVar("TItem", bound="Item")
 
 
+class NoArguemnt:
+    pass
+
+
 class ResultsSet:
     def __init__(
         self,
         model: TItem,
         results: List[Dict[str, Any]],
         last_evalulated_key: Dict[str, Any],
+        count: int,
     ):
         self.last_evaluated_key = last_evalulated_key
+        self.count = count
         self._model = model
         self._results = results
         self._last_iterated_index = 0
@@ -113,16 +119,24 @@ class Item:
         self.create_state = True
         return self
 
-    def get(self) -> TItem:
+    def get(self, index_name: Optional[str]) -> TItem:
         if not self.create_state:
             raise ValueError("Item must be created before you can call `get`.")
 
-        hash_key = getattr(self, self.table_config["key_schema"]["hash_key"].name)
-        sort_key = None
-        if self.table_config["key_schema"]["sort_key"]:
-            sort_key = getattr(self, self.table_config["key_schema"]["sort_key"].name)
+        # use the default index if none is provided.
+        if index_name is None:
+            hash_key = getattr(self, self.table_config["key_schema"]["hash_key"].name)
+            sort_key = None
+            if self.table_config["key_schema"]["sort_key"]:
+                sort_key = getattr(
+                    self, self.table_config["key_schema"]["sort_key"].name
+                )
 
-        return self.get_by_key(hash_key.value, sort_key.value)
+            return self.get_by_key(hash_key.value, sort_key.value)
+
+        # use the index provided.
+        index = self.table_config["indexes"][index_name]
+        x = 1
 
     def get_by_key(self, hash_key: Any, sort_key: Optional[Any] = None) -> TItem:
         dynamodb = boto3.resource("dynamodb", **self.client_config)
@@ -157,6 +171,7 @@ class Item:
         hash_key: Any,
         key_condition: Optional[Condition] = None,
         filter_expression: Optional[Condition] = None,
+        limit: Optional[int] = None,
     ) -> Iterator[TItem]:
 
         expression, values = query_engine.create_key_condition(
@@ -166,19 +181,29 @@ class Item:
         if filter_expression:
             values.update(filter_expression.values)
 
-        client = boto3.client("dynamodb", **self.client_config)
-        response = client.query(
-            TableName=self.table_config["table_name"],
-            Select="ALL_ATTRIBUTES",
-            KeyConditionExpression=expression,
-            FilterExpression=filter_expression.expression
+        query_arguments = {
+            "KeyConditionExpression": expression,
+            "ExpressionAttributeValues": values,
+            "Limit": limit if limit else NoArguemnt(),
+            "FilterExpression": filter_expression.expression
             if filter_expression
-            else None,
-            ExpressionAttributeValues=values,
-        )
+            else NoArguemnt(),
+            "Select": "ALL_ATTRIBUTES",
+            "TableName": self.table_config["table_name"],
+        }
+
+        # remove the arguments where no argument was provided.
+        query_arguments = {
+            k: v for k, v in query_arguments.items() if not isinstance(v, NoArguemnt)
+        }
+
+        # TODO: Update this so it automatically fetches more results for us if a limit is not provided.
+        client = boto3.client("dynamodb", **self.client_config)
+        response = client.query(**query_arguments)
 
         return ResultsSet(
             model=self,
             results=response["Items"],
             last_evalulated_key=response.get("LastEvaluatedKey", {}),
+            count=response["Count"],
         )
