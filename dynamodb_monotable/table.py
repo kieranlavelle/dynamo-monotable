@@ -71,8 +71,8 @@ class Table:
         self.table_config = {
             "table_name": self.name,
             "key_schema": {
-                "hash_key": self.schema.indexes.primary.hash_key,
-                "sort_key": self.schema.indexes.primary.sort_key,
+                "hash_key": self.schema.indexes["primary"].hash_key,
+                "sort_key": self.schema.indexes["primary"].sort_key,
             },
             "indexes": self.schema.indexes,
         }

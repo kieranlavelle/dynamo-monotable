@@ -44,12 +44,13 @@ def create_basic_table(table_name: str) -> Tuple[Table, Workorder]:
                     "primary": {
                         "hash_key": {"name": "hk", "type": "S"},
                         "sort_key": {"name": "sk", "type": "S"},
-                        "index_type": "PRIMARY",
+                        "index_type": "primary",
                     },
                     "workorder_by_task": {
                         "hash_key": {"name": "hk", "type": "S"},
                         "sort_key": {"name": "task_id", "type": "S"},
-                        "index_type": "GSI",
+                        "index_type": "gsi",
+                        "example": "hk=#WORKORDER, task_id=#TASK:123",
                     },
                 },
                 "models": [Workorder],

@@ -1,13 +1,13 @@
 from enum import Enum
-from typing import Optional, Dict
+from typing import Optional, Any
 
 from pydantic import BaseModel, root_validator, Field
 
 
 class IndexType(str, Enum):
-    GSI = "GSI"
-    LSI = "LSI"
-    PRIMARY = "PRIMARY"
+    GSI = "gsi"
+    LSI = "lsi"
+    PRIMARY = "primary"
 
 
 class Key(BaseModel):
@@ -19,6 +19,10 @@ class Index(BaseModel):
     hash_key: Optional[Key]
     sort_key: Optional[Key]
     index_type: IndexType = IndexType.GSI
+
+    # this field is ignored when creating the table
+    # it's only to help the user docuemnt the index
+    example: Any
 
     @root_validator()
     def check_no_hash_key_for_lsi(cls, values: dict):

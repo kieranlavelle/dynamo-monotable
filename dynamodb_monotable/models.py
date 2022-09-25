@@ -5,7 +5,6 @@ import boto3
 
 from dynamodb_monotable.resolvers import solve_template_values
 from dynamodb_monotable.attributes import Attribute, Condition
-from dynamodb_monotable import query_engine
 
 TItem = TypeVar("TItem", bound="Item")
 
@@ -18,14 +17,12 @@ class ResultsSet:
     def __init__(
         self,
         model: TItem,
-        results: List[Dict[str, Any]],
-        last_evalulated_key: Dict[str, Any],
-        count: int,
+        response: Dict[str, Any],
     ):
-        self.last_evaluated_key = last_evalulated_key
-        self.count = count
         self._model = model
-        self._results = results
+        self.last_evaluated_key = response.get("LastEvaluatedKey", {})
+        self.count = response["Count"]
+        self._results = response["Items"]
         self._last_iterated_index = 0
 
     def __next__(self) -> TItem:
@@ -91,6 +88,10 @@ class Item:
         if sort_key and sort_key.name not in self._field_names():
             raise ValueError(f"{sort_key.name} is not on the model.")
 
+    def hash_key(self, index: str = "primary") -> Attribute:
+        hash_key_name = self.table_config["indexes"][index].hash_key.name
+        return self._fields()[hash_key_name]
+
     def save(self, **kwargs) -> None:
         if self.create_state is False:
             raise ValueError("Item must be created before saving.")
@@ -109,6 +110,16 @@ class Item:
     def create(self, **values) -> TItem:
         self.attribute_values.update(values)
 
+        # check for default fields
+        for field_name, field in self._fields().items():
+            if field_name not in self.attribute_values:
+                self.attribute_values[field_name] = field.default
+
+        # check for required fields
+        for field_name, field in self._fields().items():
+            if field_name not in self.attribute_values and field.required:
+                raise ValueError(f"{field_name} is required.")
+
         # check the hk and sk are provided if needed
         self._validate_model()
 
@@ -125,18 +136,18 @@ class Item:
 
         index = self.table_config["indexes"][index_name]
 
-        hash_key = getattr(self, index["hash_key"].name)
+        hash_key = self.attribute_values[index.hash_key.name]
         sort_key = None
-        if index["sort_key"]:
-            sort_key = getattr(self, index["sort_key"].name)
+        if index.sort_key:
+            sort_key = self.attribute_values[index.sort_key.name]
 
-        return self.get_by_key(hash_key.value, sort_key.value)
+        return self.get_by_key(hash_key, sort_key)
 
     def get_by_key(
         self,
         hash_key: Any,
         sort_key: Optional[Any] = None,
-        index_name: Optional[str] = None,
+        index_name: str = "primary",
     ) -> TItem:
 
         # TODO: Need's updating to work with index...
@@ -146,10 +157,10 @@ class Item:
         dynamodb = boto3.resource("dynamodb", **self.client_config)
         table = dynamodb.Table(self.table_config["table_name"])
 
-        key = {index["hash_key"].name: hash_key}
+        key = {index.hash_key.name: hash_key}
         if sort_key:
-            if index["sort_key"]:
-                key[index["sort_key"].name] = sort_key
+            if index.sort_key:
+                key[index.sort_key.name] = sort_key
             else:
                 raise ValueError(
                     "Sort key is not defined on the table but has been provided."
@@ -174,26 +185,22 @@ class Item:
     def query(
         self,
         hash_key: Any,
-        key_condition: Optional[Condition] = None,
-        filter_expression: Optional[Condition] = None,
+        key_condition: Condition = Condition(),
+        filter_expression: Condition = Condition(),
         limit: Optional[int] = None,
+        index: str = "primary",
     ) -> ResultsSet:
 
         # TODO: Update query to support index
 
-        # TODO: create a way to get the HK and do it like this..
-        # HK will depend on the index we're using....
-        # condition = self.hk & key_condition
-        expression, values = query_engine.create_key_condition(
-            self.table_config, hash_key, key_condition
-        )
-
-        if filter_expression:
-            values.update(filter_expression.values)
-
+        key_condition = self.hash_key(index).eq(hash_key) & key_condition
         query_arguments = {
-            "KeyConditionExpression": expression,
-            "ExpressionAttributeValues": values,
+            "KeyConditionExpression": key_condition.expression,
+            "ExpressionAttributeValues": {
+                **key_condition.values,
+                **filter_expression.values,
+            },
+            "IndexName": index if index != "primary" else NoArguemnt(),
             "Limit": limit if limit else NoArguemnt(),
             "FilterExpression": filter_expression.expression
             if filter_expression
@@ -211,10 +218,4 @@ class Item:
         client = boto3.client("dynamodb", **self.client_config)
         response = client.query(**query_arguments)
 
-        # TODO: Update this so the result set is created with ResultsSet(self, response)
-        return ResultsSet(
-            model=self,
-            results=response["Items"],
-            last_evalulated_key=response.get("LastEvaluatedKey", {}),
-            count=response["Count"],
-        )
+        return ResultsSet(model=self, response=response)

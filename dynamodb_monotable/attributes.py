@@ -5,12 +5,15 @@ from uuid import uuid4
 
 
 class Condition:
-    def __init__(self, expression: str, values: Dict[str, Any]):
+    def __init__(self, expression: str = "", values: Optional[Dict[str, Any]] = None):
         self.expression = expression
-        self.values = values
+        self.values = values if values else {}
 
     def __and__(a, b):
         return Condition(f"{a.expression} AND {b.expression}", {**a.values, **b.values})
+
+    def __or__(a, b):
+        return Condition(f"{a.expression} OR {b.expression}", {**a.values, **b.values})
 
 
 class Attribute(ABC):

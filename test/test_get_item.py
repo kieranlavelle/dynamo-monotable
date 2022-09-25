@@ -41,7 +41,7 @@ def test_can_get_item(create_basic_table: Tuple[Table, Workorder]):
     populated_model.save()
 
     # retrieve the data from the database using boto3
-    fetched_model = model.get()
+    fetched_model = populated_model.get()
 
     if not fetched_model:
         pytest.fail("Item not found in database")
