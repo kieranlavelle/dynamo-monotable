@@ -5,6 +5,7 @@ import boto3
 
 from dynamodb_monotable.resolvers import solve_template_values
 from dynamodb_monotable.attributes import Attribute, Condition
+from dynamodb_monotable.exceptions import NoResultsFound
 
 TItem = TypeVar("TItem", bound="Item")
 
@@ -150,8 +151,6 @@ class Item:
         index_name: str = "primary",
     ) -> TItem:
 
-        # TODO: Need's updating to work with index...
-        # update the key schema so primary is named primary...
         index = self.table_config["indexes"][index_name]
 
         dynamodb = boto3.resource("dynamodb", **self.client_config)
@@ -167,18 +166,22 @@ class Item:
                 )
 
         # TODO: this is basic at the moment and can support far more args.
-        # TODO: Also need to support a number of exceptions
         response = table.get_item(Key=key)
         if "Item" not in response:
-            raise ValueError("Item not found.")
+            raise NoResultsFound("No item found for the provided key.")
 
         response_item: Dict[str, Any] = response["Item"]
         for field_name, field in self._fields().items():
             if field_name in response_item:
-                setattr(self, field_name, field.deserialize(response_item[field_name]))
+                self.attribute_values[field_name] = field.deserialize(
+                    response_item[field_name]
+                )
             else:
-                # TODO: What if they dont want to return all fields? Should we move values out of field definition?
-                setattr(self, field_name, None)
+                # no results returned for this field so remove it from the attr values.
+                try:
+                    self.attribute_values[field_name].pop()
+                except KeyError:
+                    pass
 
         return self
 
@@ -190,8 +193,6 @@ class Item:
         limit: Optional[int] = None,
         index: str = "primary",
     ) -> ResultsSet:
-
-        # TODO: Update query to support index
 
         key_condition = self.hash_key(index).eq(hash_key) & key_condition
         query_arguments = {
