@@ -16,7 +16,18 @@ class Condition:
         return Condition(f"{a.expression} OR {b.expression}", {**a.values, **b.values})
 
 
-class Attribute(ABC):
+class AttributeDescriptor:
+    def __set_name__(self, owner, name):
+        self._name = name
+
+    def __set__(self, instance, value):
+        instance.attribute_values[self._name] = value
+
+    def __get__(self, instance, owner):
+        return instance.attribute_values[self._name]
+
+
+class Attribute(ABC, AttributeDescriptor):
     def __init__(
         self,
         name: Optional[str] = None,

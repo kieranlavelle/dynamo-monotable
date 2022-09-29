@@ -21,7 +21,7 @@ def test_can_query_item(create_basic_table: Tuple[Table, Workorder]):
 
     # retrieve the data from the database using boto3
     results = model.query(
-        hash_key="#WORKORDER", key_condition=model.sk.begins_with("#ORG:456")
+        hash_key_value="#WORKORDER", key_condition=model.sk.begins_with("#ORG:456")
     )
 
     if results.count != 3:

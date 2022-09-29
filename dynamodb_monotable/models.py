@@ -6,12 +6,9 @@ import boto3
 from dynamodb_monotable.resolvers import solve_template_values
 from dynamodb_monotable.attributes import Attribute, Condition
 from dynamodb_monotable.exceptions import NoResultsFound
+from dynamodb_monotable.core.queries import parse_query_args
 
 TItem = TypeVar("TItem", bound="Item")
-
-
-class NoArguemnt:
-    pass
 
 
 class ResultsSet:
@@ -89,7 +86,11 @@ class Item:
         if sort_key and sort_key.name not in self._field_names():
             raise ValueError(f"{sort_key.name} is not on the model.")
 
-    def hash_key(self, index: str = "primary") -> Attribute:
+    def hash_key(self, index: Optional[str]) -> Attribute:
+
+        if index is None:
+            index = "primary"
+
         hash_key_name = self.table_config["indexes"][index].hash_key.name
         return self._fields()[hash_key_name]
 
@@ -187,36 +188,38 @@ class Item:
 
     def query(
         self,
-        hash_key: Any,
-        key_condition: Condition = Condition(),
-        filter_expression: Condition = Condition(),
+        hash_key_value: Any,
+        key_condition: Optional[Condition] = None,
+        filter_expression: Optional[Condition] = None,
         limit: Optional[int] = None,
-        index: str = "primary",
+        index: Optional[str] = None,
+        select: Optional[str] = None,
+        consistent_read: bool = False,
+        scan_index_forward: bool = True,
+        exclusive_start_key: Optional[Dict] = None,
+        return_consumed_capacity: Optional[str] = None,
+        projection_expression: Optional[str] = None,
     ) -> ResultsSet:
 
-        key_condition = self.hash_key(index).eq(hash_key) & key_condition
-        query_arguments = {
-            "KeyConditionExpression": key_condition.expression,
-            "ExpressionAttributeValues": {
-                **key_condition.values,
-                **filter_expression.values,
-            },
-            "IndexName": index if index != "primary" else NoArguemnt(),
-            "Limit": limit if limit else NoArguemnt(),
-            "FilterExpression": filter_expression.expression
-            if filter_expression
-            else NoArguemnt(),
-            "Select": "ALL_ATTRIBUTES",
-            "TableName": self.table_config["table_name"],
-        }
-
-        # remove the arguments where no argument was provided.
-        query_arguments = {
-            k: v for k, v in query_arguments.items() if not isinstance(v, NoArguemnt)
-        }
+        # TODO: need to consider how these args change the response.
+        args = parse_query_args(
+            hash_key=self.hash_key(index),
+            hash_key_value=hash_key_value,
+            table_name=self.table_config["table_name"],
+            key_condition=key_condition,
+            filter_expression=filter_expression,
+            limit=limit,
+            index=index,
+            select=select,
+            consistent_read=consistent_read,
+            scan_index_forward=scan_index_forward,
+            exclusive_start_key=exclusive_start_key,
+            return_consumed_capacity=return_consumed_capacity,
+            projection_expression=projection_expression,
+        )
 
         # TODO: Update this so it automatically fetches more results for us if a limit is not provided.
         client = boto3.client("dynamodb", **self.client_config)
-        response = client.query(**query_arguments)
+        response = client.query(**args)
 
         return ResultsSet(model=self, response=response)
